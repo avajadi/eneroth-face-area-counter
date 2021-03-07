@@ -25,7 +25,7 @@ module Eneroth::MaterialAreaCounter
 
     # REVIEW: What happens when user is not in the model root? That messes up
     # the Transformations and coordinates reported, doesn't it?
-    areas = iterate_entities(Sketchup.active_model.entities)
+    areas = iterate_entities(get_selection, get_cost_materials)
 
     areas = Hash[areas.map { |k, v|
       [format_material_name(k), Sketchup.format_area(v)]
@@ -38,6 +38,24 @@ module Eneroth::MaterialAreaCounter
     )
 
     nil
+  end
+
+  def self.get_cost_materials(collection = "Husmaterial")
+    files = Dir.glob("*.skm", base: Sketchup.find_support_file('Materials') + "/" + collection)
+    materials = []
+    files.each do |file|
+      basename = File.basename(file, ".skm")
+      materials << basename
+    end
+    puts materials.join("\n")
+
+    materials
+  end
+
+  def self.get_selection
+    model = Sketchup.active_model
+    selection = model.selection
+    selection
   end
 
   # Format hash.
@@ -68,16 +86,20 @@ module Eneroth::MaterialAreaCounter
   # @param [Sketchup::Material]
   # @param [Hash] Areas indexed by Materials.
   # @return [Hash] Areas indexed by Materials.
-  def self.iterate_entities(entities, transformation = IDENTITY, parent_material = nil, areas = Hash.new(0))
+  def self.iterate_entities(entities, materials = Array.new(0), transformation = IDENTITY, parent_material = nil, areas = Hash.new(0))
     entities.each do |entity|
       case entity
       when Sketchup::Face
-        area = entity.area * scale_factor_in_plane(entity.plane, transformation)
-        areas[entity.material || parent_material] += area
-        areas[entity.back_material || parent_material] += area
+        unless entity.material == nil
+          if materials.include? entity.material.display_name
+            area = entity.area * scale_factor_in_plane(entity.plane, transformation)
+            areas[entity.back_material || entity.material || parent_material] += area
+          end
+        end
       when Sketchup::ComponentInstance, Sketchup::Group
         iterate_entities(
           entity.definition.entities,
+          materials,
           transformation * entity.transformation,
           entity.material || parent_material,
           areas
@@ -112,6 +134,6 @@ module Eneroth::MaterialAreaCounter
   end
 
   menu = UI.menu("Plugins")
-  menu.add_item(EXTENSION.name) {count_material_areas}
+  menu.add_item(EXTENSION.name) { count_material_areas }
 
 end
